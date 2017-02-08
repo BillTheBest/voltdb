@@ -82,8 +82,9 @@ public class ExecutionEngineJNI extends ExecutionEngine {
 
     /** Create a ByteBuffer (in a container) for serializing arguments to C++. Use a direct
     ByteBuffer as it will be passed directly to the C++ code. */
-    private BBContainer psetBufferC = null;
-    private ByteBuffer psetBuffer = null;
+    private static final int MAX_PSETBUFFER_SIZE = 50 * 1024 * 1024; // 50MB
+    private BBContainer m_psetBufferC = null;
+    private ByteBuffer m_psetBuffer = null;
 
     /**
      * A deserializer backed by a direct byte buffer, for fast access from C++.
@@ -165,16 +166,16 @@ public class ExecutionEngineJNI extends ExecutionEngine {
     }
 
     final void setupPsetBuffer(int size) {
-        if (psetBuffer != null) {
-            psetBufferC.discard();
-            psetBuffer = null;
+        if (m_psetBuffer != null) {
+            m_psetBufferC.discard();
+            m_psetBuffer = null;
         }
 
-        psetBufferC = DBBPool.allocateDirect(size);
-        psetBuffer = psetBufferC.b();
+        m_psetBufferC = DBBPool.allocateDirect(size);
+        m_psetBuffer = m_psetBufferC.b();
 
-        int errorCode = nativeSetBuffers(pointer, psetBuffer,
-                psetBuffer.capacity(),
+        int errorCode = nativeSetBuffers(pointer, m_psetBuffer,
+                m_psetBuffer.capacity(),
                 m_firstDeserializer.buffer(), m_firstDeserializer.buffer().capacity(),
                 m_nextDeserializer.buffer(), m_nextDeserializer.buffer().capacity(),
                 m_exceptionBuffer, m_exceptionBuffer.capacity());
@@ -182,12 +183,17 @@ public class ExecutionEngineJNI extends ExecutionEngine {
     }
 
     final void clearPsetAndEnsureCapacity(int size) {
-        assert(psetBuffer != null);
-        if (size > psetBuffer.capacity()) {
+        assert(m_psetBuffer != null);
+        if (size > m_psetBuffer.capacity()) {
             setupPsetBuffer(size);
         }
+        else if (size < MAX_PSETBUFFER_SIZE && m_psetBuffer.capacity() > MAX_PSETBUFFER_SIZE) {
+            // The last request was a batch that was greater than max network buffer size,
+            // so let's not hang on to all that memory
+            setupPsetBuffer(MAX_PSETBUFFER_SIZE);
+        }
         else {
-            psetBuffer.clear();
+            m_psetBuffer.clear();
         }
     }
 
@@ -226,8 +232,8 @@ public class ExecutionEngineJNI extends ExecutionEngine {
         m_nextDeserializerBufferOrigin.discard();
         m_exceptionBuffer = null;
         m_exceptionBufferOrigin.discard();
-        psetBufferC.discard();
-        psetBuffer = null;
+        m_psetBufferC.discard();
+        m_psetBuffer = null;
         LOG.trace("Released Execution Engine.");
     }
 
@@ -298,15 +304,15 @@ public class ExecutionEngineJNI extends ExecutionEngine {
 
         clearPsetAndEnsureCapacity(allPsetSize);
         for (int i = 0; i < batchSize; ++i) {
-            int paramStart = psetBuffer.position();
+            int paramStart = m_psetBuffer.position();
             if (parameterSets[i] instanceof ByteBuffer) {
                 ByteBuffer buf = (ByteBuffer) parameterSets[i];
-                psetBuffer.put(buf);
+                m_psetBuffer.put(buf);
             }
             else {
                 ParameterSet pset = (ParameterSet) parameterSets[i];
                 try {
-                    pset.flattenToBuffer(psetBuffer);
+                    pset.flattenToBuffer(m_psetBuffer);
                 }
                 catch (final IOException exception) {
                     throw new RuntimeException("Error serializing parameters for SQL batch element: " +
@@ -316,11 +322,11 @@ public class ExecutionEngineJNI extends ExecutionEngine {
                 }
             }
             if (isWriteFrag[i]) {
-                psetBuffer.limit(psetBuffer.position());
-                psetBuffer.position(paramStart);
-                writeCRC.update(psetBuffer);
-                assert(psetBuffer.remaining() == 0);
-                psetBuffer.limit(allPsetSize);
+                m_psetBuffer.limit(m_psetBuffer.position());
+                m_psetBuffer.position(paramStart);
+                writeCRC.update(m_psetBuffer);
+                assert(m_psetBuffer.remaining() == 0);
+                m_psetBuffer.limit(allPsetSize);
             }
         }
         // checkMaxFsSize();
@@ -345,8 +351,8 @@ public class ExecutionEngineJNI extends ExecutionEngine {
 
         try {
             checkErrorCode(errorCode);
-            m_usingFallbackBuffer = m_fallbackBuffer == null;
-            FastDeserializer fds = m_usingFallbackBuffer ? targetDeserializer : new FastDeserializer(m_fallbackBuffer);
+            m_usingFallbackBuffer = m_fallbackBuffer != null;
+            FastDeserializer fds = m_usingFallbackBuffer ? new FastDeserializer(m_fallbackBuffer) : targetDeserializer;
             assert(fds != null);
             try {
                 // check if anything was changed
@@ -582,7 +588,7 @@ public class ExecutionEngineJNI extends ExecutionEngine {
         // serialize the param set
         clearPsetAndEnsureCapacity(parameterSet.getSerializedSize());
         try {
-            parameterSet.flattenToBuffer(psetBuffer);
+            parameterSet.flattenToBuffer(m_psetBuffer);
         } catch (final IOException exception) {
             throw new RuntimeException(exception); // can't happen
         }
@@ -599,7 +605,7 @@ public class ExecutionEngineJNI extends ExecutionEngine {
             // serialize the param set
             clearPsetAndEnsureCapacity(parameterSet.getSerializedSize());
             try {
-                parameterSet.flattenToBuffer(psetBuffer);
+                parameterSet.flattenToBuffer(m_psetBuffer);
             } catch (final IOException exception) {
                 throw new RuntimeException(exception); // can't happen
             }
@@ -637,7 +643,7 @@ public class ExecutionEngineJNI extends ExecutionEngine {
     @Override
     public byte[] executeTask(TaskType taskType, ByteBuffer task) throws EEException {
         try {
-            psetBuffer.putLong(0, taskType.taskId);
+            m_psetBuffer.putLong(0, taskType.taskId);
 
             //Clear is destructive, do it before the native call
             m_nextDeserializer.clear();
@@ -653,7 +659,7 @@ public class ExecutionEngineJNI extends ExecutionEngine {
     @Override
     public ByteBuffer getParamBufferForExecuteTask(int requiredCapacity) {
         clearPsetAndEnsureCapacity(8 + requiredCapacity);
-        psetBuffer.position(8);
-        return psetBuffer;
+        m_psetBuffer.position(8);
+        return m_psetBuffer;
     }
 }
