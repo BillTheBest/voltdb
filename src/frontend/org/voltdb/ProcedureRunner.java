@@ -378,11 +378,13 @@ public class ProcedureRunner {
                                 m_cachedSingleStmt.stmt,
                                 m_cachedSingleStmt.params,
                                 m_cachedSingleStmt.stmt.statementParamTypes);
+                        table.convertToHeapBuffer();
                         results = new VoltTable[] { table };
                     }
                     else {
                         m_batch.add(m_cachedSingleStmt);
                         results = voltExecuteSQL(true);
+                        results = convertTablesToHeapBuffers(results);
                     }
                 }
                 catch (SerializableException ex) {
@@ -1292,6 +1294,14 @@ public class ProcedureRunner {
                "VOLTDB ERROR: " + msg);
    }
 
+   final private VoltTable[] convertTablesToHeapBuffers(VoltTable[] results) {
+       for (VoltTable table : results) {
+           // Make sure this table does not use an ee cache buffer
+           table.convertToHeapBuffer();
+       }
+       return results;
+
+   }
    /**
     * Given the results of a procedure, convert it into a sensible array of VoltTables.
     * @throws InvocationTargetException
