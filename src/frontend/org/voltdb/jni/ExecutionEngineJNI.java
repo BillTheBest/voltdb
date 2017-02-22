@@ -282,6 +282,22 @@ public class ExecutionEngineJNI extends ExecutionEngine {
         checkErrorCode(errorCode);
     }
 
+    public int extractGranularStats(long[] durationsOut) {
+        granularStatsBuffer.clear();
+        int succeededFragmentsCount = granularStatsBuffer.getInt();
+        if (durationsOut != null) {
+            assert(durationsOut.length >= succeededFragmentsCount);
+            for (int i = 0; i < succeededFragmentsCount; i++) {
+                durationsOut[i] = granularStatsBuffer.getLong();
+            }
+            // This is the time for the failed fragment.
+            if (succeededFragmentsCount < durationsOut.length) {
+                durationsOut[succeededFragmentsCount] = granularStatsBuffer.getLong();
+            }
+        }
+        return succeededFragmentsCount;
+    }
+
     /**
      * @param undoToken Token identifying undo quantum for generated undo info
      */

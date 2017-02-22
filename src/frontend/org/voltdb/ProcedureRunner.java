@@ -57,7 +57,10 @@ import org.voltdb.exceptions.SerializableException;
 import org.voltdb.exceptions.SpecifiedException;
 import org.voltdb.groovy.GroovyScriptProcedureDelegate;
 import org.voltdb.iv2.MpInitiator;
+import org.voltdb.iv2.Site;
 import org.voltdb.iv2.UniqueIdGenerator;
+import org.voltdb.jni.ExecutionEngine;
+import org.voltdb.jni.ExecutionEngineJNI;
 import org.voltdb.messaging.FragmentTaskMessage;
 import org.voltdb.planner.ActivePlanRepository;
 import org.voltdb.sysprocs.AdHocBase;
@@ -120,6 +123,7 @@ public class ProcedureRunner {
     // hooks into other parts of voltdb
     //
     protected final SiteProcedureConnection m_site;
+    protected final ExecutionEngine m_ee;
     protected final SystemProcedureExecutionContext m_systemProcedureContext;
     protected CatalogSpecificPlanner m_csp;
 
@@ -205,6 +209,12 @@ public class ProcedureRunner {
             m_partitionColumnType = null;
         }
         m_site = site;
+        if (site instanceof Site) {
+            m_ee = ((Site)site).getEngine();
+        }
+        else {
+            m_ee = null;
+        }
         m_systemProcedureContext = sysprocContext;
         m_csp = csp;
 
@@ -1616,6 +1626,7 @@ public class ProcedureRunner {
        Object[] params = new Object[batchSize];
        long[] fragmentIds = new long[batchSize];
        String[] sqlTexts = new String[batchSize];
+       int succeededFragmentsCount = 0;
 
        int i = 0;
        for (final QueuedSQL qs : batch) {
@@ -1654,7 +1665,29 @@ public class ProcedureRunner {
 
            throw ex;
        }
-
+       finally {
+           long[] durations = null;
+           if (m_statsCollector.recording()) {
+               durations = new long[batchSize];
+           }
+           if (m_ee instanceof ExecutionEngineJNI) {
+               succeededFragmentsCount = ((ExecutionEngineJNI)m_ee).extractGranularStats(durations);
+           }
+           else {
+                // IPC
+           }
+           for (i = 0; i < batchSize; i++) {
+               QueuedSQL qs = batch.get(i);
+               m_statsCollector.finishStatement(qs.stmt,
+                                                i == succeededFragmentsCount,
+                                                durations == null ? 0 : durations[i],
+                                                results == null ? null : results[i],
+                                                qs.params);
+               if (i == succeededFragmentsCount) {
+                   break;
+               }
+           }
+       }
        return results;
     }
 }

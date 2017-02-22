@@ -177,7 +177,12 @@ class ProcedureStatsCollector extends SiteStatsSource {
         }
     }
 
+    public final boolean recording() {
+        return m_procStat.m_currentStartTime > 0;
+    }
+
     public final void finishStatement(SQLStmt stmt,
+                                      boolean failed,
                                       long duration,
                                       VoltTable result,
                                       ParameterSet parameterSet) {
@@ -185,7 +190,7 @@ class ProcedureStatsCollector extends SiteStatsSource {
         if (stat == null) {
             return;
         }
-        if (m_procStat.m_currentStartTime > 0) {
+        if (recording()) {
             // This is a sampled invocation.
             // Update timings and size statistics.
             if (duration < 0)
@@ -227,7 +232,7 @@ class ProcedureStatsCollector extends SiteStatsSource {
                 stat.m_lastMaxParameterSetSize = Math.max(parameterSetSize, stat.m_lastMaxParameterSetSize);
             }
         }
-        if (duration == -1L) {
+        if (failed) {
             stat.m_failureCount++;
         }
         stat.m_invocations++;
@@ -242,7 +247,7 @@ class ProcedureStatsCollector extends SiteStatsSource {
             boolean failed,
             VoltTable[] results,
             ParameterSet parameterSet) {
-        if (m_procStat.m_currentStartTime > 0) {
+        if (recording()) {
             // This is a sampled invocation.
             // Update timings and size statistics.
             final long endTime = System.nanoTime();
