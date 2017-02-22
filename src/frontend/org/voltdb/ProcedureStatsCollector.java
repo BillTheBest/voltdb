@@ -145,6 +145,62 @@ class ProcedureStatsCollector extends SiteStatsSource {
         }
     }
 
+    public final void finishStatement(SQLStmt stmt,
+                                      long duration,
+                                      VoltTable result,
+                                      ParameterSet parameterSet) {
+        ProcedureStmtStat stat = m_stats.get(stmt);
+        if (stat == null) {
+            return;
+        }
+        if (m_procStat.m_currentStartTime > 0) {
+            // This is a sampled invocation.
+            // Update timings and size statistics.
+            if (duration < 0)
+            {
+                if (Math.abs(duration) > 1000000000)
+                {
+                    log.info("Statement: " + stat.m_stmtName + " in procedure: " + m_procName +
+                             " recorded a negative execution time larger than one second: " +
+                             duration);
+                }
+            }
+            else
+            {
+                stat.m_totalTimedExecutionTime += duration;
+                stat.m_timedInvocations++;
+
+                // sampled timings
+                stat.m_minExecutionTime = Math.min( duration, stat.m_minExecutionTime);
+                stat.m_maxExecutionTime = Math.max( duration, stat.m_maxExecutionTime);
+                stat.m_lastMinExecutionTime = Math.min( duration, stat.m_lastMinExecutionTime);
+                stat.m_lastMaxExecutionTime = Math.max( duration, stat.m_lastMaxExecutionTime);
+
+                // sampled size statistics
+                int resultSize = 0;
+                if (result != null) {
+                    resultSize = result.getSerializedSize();
+                }
+                stat.m_totalResultSize += resultSize;
+                stat.m_minResultSize = Math.min(resultSize, stat.m_minResultSize);
+                stat.m_maxResultSize = Math.max(resultSize, stat.m_maxResultSize);
+                stat.m_lastMinResultSize = Math.min(resultSize, stat.m_lastMinResultSize);
+                stat.m_lastMaxResultSize = Math.max(resultSize, stat.m_lastMaxResultSize);
+                int parameterSetSize = (
+                        parameterSet != null ? parameterSet.getSerializedSize() : 0);
+                stat.m_totalParameterSetSize += parameterSetSize;
+                stat.m_minParameterSetSize = Math.min(parameterSetSize, stat.m_minParameterSetSize);
+                stat.m_maxParameterSetSize = Math.max(parameterSetSize, stat.m_maxParameterSetSize);
+                stat.m_lastMinParameterSetSize = Math.min(parameterSetSize, stat.m_lastMinParameterSetSize);
+                stat.m_lastMaxParameterSetSize = Math.max(parameterSetSize, stat.m_lastMaxParameterSetSize);
+            }
+        }
+        if (duration == -1L) {
+            stat.m_failureCount++;
+        }
+        stat.m_invocations++;
+    }
+
     /**
      * Called after a procedure is finished executing. Compares the start and end time and calculates
      * the statistics.
@@ -320,27 +376,41 @@ class ProcedureStatsCollector extends SiteStatsSource {
     protected Iterator<Object> getStatsRowKeyIterator(boolean interval) {
         m_interval = interval;
         return new Iterator<Object>() {
-            boolean givenNext = false;
+            Iterator<Entry<SQLStmt, ProcedureStmtStat>> iter = m_stats.entrySet().iterator();
+            ProcedureStmtStat nextToReturn = null;
             @Override
             public boolean hasNext() {
-                if (!getInterval()) {
-                    if (getInvocations() == 0) {
-                        return false;
-                    }
+                if (nextToReturn != null) {
+                    return true;
                 }
-                else if (getInvocations() - getLastInvocations() == 0) {
+                if ( ! iter.hasNext()) {
                     return false;
                 }
-                return !givenNext;
+                // Find the next element to return.
+                do {
+                    nextToReturn = iter.next().getValue();
+                    if (getInterval()) {
+                        if (nextToReturn.m_timedInvocations - nextToReturn.m_lastTimedInvocations == 0) {
+                            nextToReturn = null;
+                            continue;
+                        }
+                    }
+                    else {
+                        if (nextToReturn.m_timedInvocations == 0) {
+                            nextToReturn = null;
+                            continue;
+                        }
+                    }
+                } while (nextToReturn == null && iter.hasNext());
+                return nextToReturn != null;
             }
 
             @Override
             public Object next() {
-                if (!givenNext) {
-                    givenNext = true;
-                    return new Object();
-                }
-                return null;
+                hasNext();
+                Object ret = nextToReturn;
+                nextToReturn = null;
+                return ret;
             }
 
             @Override
@@ -360,22 +430,6 @@ class ProcedureStatsCollector extends SiteStatsSource {
      */
     public boolean getInterval() {
         return m_interval;
-    }
-
-    /**
-     * Accessor
-     * @return the m_invocations
-     */
-    public long getInvocations() {
-        return m_invocations;
-    }
-
-    /**
-     * Accessor
-     * @return the m_lastInvocations
-     */
-    public long getLastInvocations() {
-        return m_lastInvocations;
     }
 
     public int getPartitionId() {
