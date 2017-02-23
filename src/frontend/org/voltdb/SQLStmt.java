@@ -64,7 +64,7 @@ public class SQLStmt {
 
     boolean inCatalog;
 
-    String stmtName;
+    String stmtName = null;
     protected void setStmtName(String name) {
         stmtName = name;
     }

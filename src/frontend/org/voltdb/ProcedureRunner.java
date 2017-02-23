@@ -235,6 +235,10 @@ public class ProcedureRunner {
                 );
     }
 
+    public ExecutionEngine getEngine() {
+        return m_ee;
+    }
+
     public void reInitSysProc(CatalogContext catalogContext, CatalogSpecificPlanner csp) {
         assert(m_procedure != null);
         if (! m_isSysProc) {
@@ -246,6 +250,10 @@ public class ProcedureRunner {
                 catalogContext.getNodeSettings());
 
         m_csp = csp;
+    }
+
+    public ProcedureStatsCollector getStatsCollector() {
+        return m_statsCollector;
     }
 
     public Procedure getCatalogProcedure() {
@@ -1443,7 +1451,8 @@ public class ProcedureRunner {
                   long siteId,
                   boolean finalTask,
                   String procedureName,
-                  byte[] procToLoad) {
+                  byte[] procToLoad,
+                  boolean granularStatsReqeusted) {
            m_batchSize = batchSize;
            m_txnState = txnState;
 
@@ -1461,6 +1470,7 @@ public class ProcedureRunner {
                                                  txnState.isForReplay());
            m_localTask.setProcedureName(procedureName);
            m_localTask.setBatchTimeout(m_txnState.getInvocation().getBatchTimeout());
+           m_localTask.setGranularStatsRequested(granularStatsReqeusted);
 
            // the data and message for all sites in the transaction
            m_distributedTask = new FragmentTaskMessage(m_txnState.initiatorHSId,
@@ -1474,6 +1484,7 @@ public class ProcedureRunner {
            // this works fine if procToLoad is NULL
            m_distributedTask.setProcNameToLoad(procToLoad);
            m_distributedTask.setBatchTimeout(m_txnState.getInvocation().getBatchTimeout());
+           m_distributedTask.setGranularStatsRequested(granularStatsReqeusted);
        }
 
        /*
@@ -1494,7 +1505,7 @@ public class ProcedureRunner {
                m_depsForLocalTask[index] = -1;
                // Add the local fragment data.
                if (stmt.inCatalog) {
-                   m_localTask.addFragment(stmt.aggregator.planHash, m_depsToResume[index], params);
+                   m_localTask.addFragment(stmt.aggregator.planHash, stmt.getStmtName(), m_depsToResume[index], params);
                }
                else {
                    byte[] planBytes = ActivePlanRepository.planForFragmentId(stmt.aggregator.id);
@@ -1512,8 +1523,8 @@ public class ProcedureRunner {
                m_depsForLocalTask[index] = outputDepId;
                // Add local and distributed fragments.
                if (stmt.inCatalog) {
-                   m_localTask.addFragment(stmt.aggregator.planHash, m_depsToResume[index], params);
-                   m_distributedTask.addFragment(stmt.collector.planHash, outputDepId, params);
+                   m_localTask.addFragment(stmt.aggregator.planHash, stmt.getStmtName(), m_depsToResume[index], params);
+                   m_distributedTask.addFragment(stmt.collector.planHash, stmt.getStmtName(), outputDepId, params);
                }
                else {
                    byte[] planBytes = ActivePlanRepository.planForFragmentId(stmt.aggregator.id);
@@ -1535,7 +1546,8 @@ public class ProcedureRunner {
                                          m_site.getCorrespondingSiteId(),
                                          finalTask,
                                          m_procedureName,
-                                         m_procNameToLoadForFragmentTasks);
+                                         m_procNameToLoadForFragmentTasks,
+                                         m_statsCollector.recording());
 
        // iterate over all sql in the batch, filling out the above data structures
        for (int i = 0; i < batch.size(); ++i) {
@@ -1677,6 +1689,7 @@ public class ProcedureRunner {
            for (i = 0; i < batchSize; i++) {
                QueuedSQL qs = batch.get(i);
                m_statsCollector.finishStatement(qs.stmt.getStmtName(),
+                                                m_statsCollector.recording(),
                                                 i == succeededFragmentsCount,
                                                 durations == null ? 0 : durations[i],
                                                 results == null ? null : results[i],

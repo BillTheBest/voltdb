@@ -30,7 +30,7 @@ import org.voltdb.catalog.Procedure;
  * Derivation of StatsSource to expose timing information of procedure invocations.
  *
  */
-class ProcedureStatsCollector extends SiteStatsSource {
+public class ProcedureStatsCollector extends SiteStatsSource {
 
     private static final VoltLogger log = new VoltLogger("HOST");
 
@@ -184,6 +184,7 @@ class ProcedureStatsCollector extends SiteStatsSource {
     }
 
     public final void finishStatement(String stmtName,
+                                      boolean granularStatsRequested,
                                       boolean failed,
                                       long duration,
                                       VoltTable result,
@@ -192,7 +193,7 @@ class ProcedureStatsCollector extends SiteStatsSource {
         if (stat == null) {
             return;
         }
-        if (recording()) {
+        if (granularStatsRequested) {
             // This is a sampled invocation.
             // Update timings and size statistics.
             if (duration < 0)
