@@ -145,26 +145,28 @@ class ProcedureStatsCollector extends SiteStatsSource {
     private final String m_procName;
     private final int m_partitionId;
 
-    private Map<SQLStmt, ProcedureStmtStat> m_stats;
+    private Map<String, ProcedureStmtStat> m_stats;
     private ProcedureStmtStat m_procStat;
 
     /**
      * Constructor requires no args because it has access to the enclosing classes members.
      */
     public ProcedureStatsCollector(long siteId, int partitionId, Procedure catProc,
-                                   Map<SQLStmt, String> reversedStmtMap) {
+                                   ArrayList<String> stmtNames) {
         super(siteId, false);
         m_partitionId = partitionId;
         m_procName = catProc.getClassname();
         // Use LinkedHashMap to have a fixed element order.
-        m_stats = new LinkedHashMap<SQLStmt, ProcedureStmtStat>();
+        m_stats = new LinkedHashMap<String, ProcedureStmtStat>();
         // Use one ProcedureStmtStat instance to hold the procedure-wide statistics.
         m_procStat = new ProcedureStmtStat("<ALL>");
         // The NULL key entry is reserved for the procedure-wide statistics.
         m_stats.put(null, m_procStat);
         // Add statistics for the individual SQL statements.
-        for (Entry<SQLStmt, String> entry : reversedStmtMap.entrySet()) {
-            m_stats.put(entry.getKey(), new ProcedureStmtStat(entry.getValue()));
+        if (stmtNames != null) {
+            for (String stmtName : stmtNames) {
+                m_stats.put(stmtName, new ProcedureStmtStat(stmtName));
+            }
         }
     }
 
@@ -181,12 +183,12 @@ class ProcedureStatsCollector extends SiteStatsSource {
         return m_procStat.m_currentStartTime > 0;
     }
 
-    public final void finishStatement(SQLStmt stmt,
+    public final void finishStatement(String stmtName,
                                       boolean failed,
                                       long duration,
                                       VoltTable result,
                                       ParameterSet parameterSet) {
-        ProcedureStmtStat stat = m_stats.get(stmt);
+        ProcedureStmtStat stat = m_stats.get(stmtName);
         if (stat == null) {
             return;
         }
@@ -418,7 +420,7 @@ class ProcedureStatsCollector extends SiteStatsSource {
     protected Iterator<Object> getStatsRowKeyIterator(boolean interval) {
         m_interval = interval;
         return new Iterator<Object>() {
-            Iterator<Entry<SQLStmt, ProcedureStmtStat>> iter = m_stats.entrySet().iterator();
+            Iterator<Entry<String, ProcedureStmtStat>> iter = m_stats.entrySet().iterator();
             ProcedureStmtStat nextToReturn = null;
             @Override
             public boolean hasNext() {

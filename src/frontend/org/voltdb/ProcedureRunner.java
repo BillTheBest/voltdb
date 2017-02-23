@@ -27,7 +27,6 @@ import java.lang.reflect.Modifier;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -222,7 +221,7 @@ public class ProcedureRunner {
 
         // Map each statement that was defined in the stored procedure with its SQLStmt variable name.
         // The variable name is used in the granular statistics for stored procedures.
-        Map<SQLStmt, String> reversedStmtMap = reflect();
+        ArrayList<String> stmtList = reflect();
 
         // Normally m_statsCollector is returned as it is and there is no affect to assign it to itself.
         // Sometimes when this procedure statistics needs to reuse the existing one, the old stats gets returned.
@@ -232,7 +231,7 @@ public class ProcedureRunner {
                         m_site.getCorrespondingSiteId(),
                         m_site.getCorrespondingPartitionId(),
                         m_catProc,
-                        reversedStmtMap)
+                        stmtList)
                 );
     }
 
@@ -1042,10 +1041,8 @@ public class ProcedureRunner {
         }
     }
 
-    // Returns a reversed map from the statement to the variable name that was defined in the java code.
-    //   - for single statement stored procedure, it is named as VoltDB.ANON_STMT_NAME (sql)
-    //   - it should return an empty map for system stored procedures.
-    protected Map<SQLStmt, String> reflect() {
+    // Returns a list that contains the names of the statements that are defined in the stored procedure.
+    protected ArrayList<String> reflect() {
         Map<String, SQLStmt> stmtMap;
 
         // fill in the sql for single statement procs
@@ -1114,10 +1111,11 @@ public class ProcedureRunner {
             stmtMap = m_language.accept(sqlStatementsRetriever, this);
         }
 
-        Map<SQLStmt, String> reversedStmtMap = new HashMap<SQLStmt, String>();
+        ArrayList<String> stmtNames = new ArrayList<String>(stmtMap.entrySet().size());
         for (final Entry<String, SQLStmt> entry : stmtMap.entrySet()) {
             String name = entry.getKey();
-            reversedStmtMap.put(entry.getValue(), name);
+            stmtNames.add(name);
+            entry.getValue().setStmtName(name);
             Statement s = m_catProc.getStatements().get(name);
             if (s != null) {
                 /*
@@ -1132,7 +1130,7 @@ public class ProcedureRunner {
                 //LOG.fine("Found statement " + name);
             }
         }
-        return reversedStmtMap;
+        return stmtNames;
     }
 
     private final static Language.Visitor<Class<?>[], ProcedureRunner> parametersTypeRetriever =
@@ -1678,7 +1676,7 @@ public class ProcedureRunner {
            }
            for (i = 0; i < batchSize; i++) {
                QueuedSQL qs = batch.get(i);
-               m_statsCollector.finishStatement(qs.stmt,
+               m_statsCollector.finishStatement(qs.stmt.getStmtName(),
                                                 i == succeededFragmentsCount,
                                                 durations == null ? 0 : durations[i],
                                                 results == null ? null : results[i],
