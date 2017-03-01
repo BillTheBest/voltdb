@@ -104,6 +104,7 @@ import org.voltdb.catalog.Cluster;
 import org.voltdb.catalog.Deployment;
 import org.voltdb.catalog.SnapshotSchedule;
 import org.voltdb.catalog.Systemsettings;
+import org.voltdb.catalog.Table;
 import org.voltdb.common.Constants;
 import org.voltdb.common.NodeState;
 import org.voltdb.compiler.AdHocCompilerCache;
@@ -177,6 +178,7 @@ import com.google_voltpatches.common.collect.ImmutableList;
 import com.google_voltpatches.common.collect.ImmutableMap;
 import com.google_voltpatches.common.collect.Maps;
 import com.google_voltpatches.common.collect.Sets;
+import com.google_voltpatches.common.hash.Hashing;
 import com.google_voltpatches.common.net.HostAndPort;
 import com.google_voltpatches.common.util.concurrent.ListenableFuture;
 import com.google_voltpatches.common.util.concurrent.ListeningExecutorService;
@@ -4260,5 +4262,25 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
     @Override
     public Cartographer getCartograhper() {
         return m_cartographer;
+    }
+
+    @Override
+    public void swapTables(String oneTable, String otherTable) {
+        System.out.println("Notifying RealVoltDB with swapping of " + oneTable + " and " + otherTable);
+        Table tableA = m_catalogContext.tables.get(oneTable);
+        Table tableB = m_catalogContext.tables.get(otherTable);
+        if (tableA != null && tableB != null) {
+            if (tableA.getIsdred() && tableB.getIsdred()) {
+                System.out.println("Notifying ConsumerDRGateway as both tables are valid and DR enabled");
+                String signatureHashA = Hashing.sha1().hashString(tableA.getSignature(), Charsets.UTF_8).toString();
+                String signatureHashB = Hashing.sha1().hashString(tableB.getSignature(), Charsets.UTF_8).toString();
+                if (m_consumerDRGateway != null) {
+                    m_consumerDRGateway.swapTables(Pair.of(oneTable, signatureHashA), Pair.of(otherTable, signatureHashB));
+                }
+            }
+        }
+        else {
+            System.out.println("Error finding tables being swapped in catalog");
+        }
     }
 }

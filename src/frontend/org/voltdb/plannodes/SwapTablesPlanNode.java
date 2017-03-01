@@ -528,17 +528,11 @@ public class SwapTablesPlanNode extends AbstractOperationPlanNode {
     private String validateTableCompatibility(String theName, String otherName,
             Table theTable, Table otherTable,
             StringBuilder feedback, String fbSeparator) {
-        if (theTable.getIsdred()) {
+        if (theTable.getIsdred() != otherTable.getIsdred()) {
             feedback.append(fbSeparator)
-            .append("Swapping table ").append(theName)
-            .append(" is not allowed because it is DR enabled.");
-            fbSeparator = TRUE_FB_SEPARATOR;
-        }
-
-        if (otherTable.getIsdred()) {
-            feedback.append(fbSeparator)
-            .append("Swapping with table ").append(otherName)
-            .append(" is not allowed because it is DR enabled.");
+                    .append("Swapping table ").append(theName)
+                    .append(" with table ").append(otherName)
+                    .append(" requires that both be DR enabled or that both be DR disabled.");
             fbSeparator = TRUE_FB_SEPARATOR;
         }
 
@@ -592,20 +586,6 @@ public class SwapTablesPlanNode extends AbstractOperationPlanNode {
             fbSeparator = TRUE_FB_SEPARATOR;
 
             listViewNames(otherTable, feedback);
-        }
-
-        if (theTable.getIsdred()) {
-            feedback.append(fbSeparator)
-            .append("Swapping table ").append(theName)
-            .append(" is not allowed because it is DR enabled");
-            fbSeparator = TRUE_FB_SEPARATOR;
-        }
-
-        if (otherTable.getIsdred()) {
-            feedback.append(fbSeparator)
-            .append("Swapping with table ").append(otherName)
-            .append(" is not allowed because it is DR enabled");
-            fbSeparator = TRUE_FB_SEPARATOR;
         }
 
         return fbSeparator;
