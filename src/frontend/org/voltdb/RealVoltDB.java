@@ -4272,8 +4272,8 @@ public class RealVoltDB implements VoltDBInterface, RestoreAgent.Callback, HostM
         if (tableA != null && tableB != null) {
             if (tableA.getIsdred() && tableB.getIsdred()) {
                 System.out.println("Notifying ConsumerDRGateway as both tables are valid and DR enabled");
-                String signatureHashA = Hashing.sha1().hashString(tableA.getSignature(), Charsets.UTF_8).toString();
-                String signatureHashB = Hashing.sha1().hashString(tableB.getSignature(), Charsets.UTF_8).toString();
+                long signatureHashA = Hashing.sha1().hashString(tableA.getSignature(), Charsets.UTF_8).asLong();
+                long signatureHashB = Hashing.sha1().hashString(tableB.getSignature(), Charsets.UTF_8).asLong();
                 if (m_consumerDRGateway != null) {
                     m_consumerDRGateway.swapTables(Pair.of(oneTable, signatureHashA), Pair.of(otherTable, signatureHashB));
                 }

@@ -36,7 +36,7 @@ public interface ConsumerDRGateway extends Promotable {
      */
     void updateCatalog(CatalogContext catalog, String newConnectionSource);
 
-    void swapTables(final Pair<String, String> oneTable, final Pair<String, String> otherTable);
+    void swapTables(final Pair<String, Long> oneTable, final Pair<String, Long> otherTable);
 
     Map<Byte, DRRoleStats.State> getStates();
 
