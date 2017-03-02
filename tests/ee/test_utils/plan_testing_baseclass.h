@@ -134,15 +134,15 @@ public:
         m_topend.reset(TOPEND::newInstance());
         m_engine.reset(new voltdb::VoltDBEngine(m_topend.get()));
         m_parameter_buffer.reset(new char[m_smallBufferSize]);
-        m_per_batch_stats_buffer.reset(new char[m_smallBufferSize]);
+        m_per_fragment_stats_buffer.reset(new char[m_smallBufferSize]);
         m_result_buffer.reset(new char[m_resultBufferSize]);
         m_exception_buffer.reset(new char[m_smallBufferSize]);
         m_engine->setBuffers(m_parameter_buffer.get(), m_smallBufferSize,
-                             m_per_batch_stats_buffer.get(), m_smallBufferSize,
+                             m_per_fragment_stats_buffer.get(), m_smallBufferSize,
                              m_result_buffer.get(), m_resultBufferSize,
                              m_exception_buffer.get(), m_smallBufferSize);
         m_engine->resetReusedResultOutputBuffer();
-        m_engine->resetPerBatchStatisticsOutputBuffer();
+        m_engine->resetPerFragmentStatsOutputBuffer();
         int partitionCount = 3;
         m_engine->initialize(m_cluster_id, m_site_id, 0, 0, "", 0, 1024, voltdb::DEFAULT_TEMP_TABLE_MEMORY, false);
         m_engine->updateHashinator(voltdb::HASHINATOR_LEGACY, (char*)&partitionCount, NULL, 0);
@@ -378,7 +378,7 @@ protected:
     boost::shared_array<char>                m_result_buffer;
     boost::shared_array<char>                m_exception_buffer;
     boost::shared_array<char>                m_parameter_buffer;
-    boost::shared_array<char>                m_per_batch_stats_buffer;
+    boost::shared_array<char>                m_per_fragment_stats_buffer;
     bool                                     m_isinitialized;
     int                                      m_fragmentNumber;
     size_t                                   m_paramCountOffset;

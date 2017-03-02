@@ -45,11 +45,11 @@
 #include "storage/temptable.h"
 #include "storage/persistenttable.h"
 #include "test_utils/plan_testing_baseclass.h"
-#include "PerBatchStatsTest.hpp"
+#include "PerFragmentStatsTest.hpp"
 
-class PerBatchStatsTest : public PlanTestingBaseClass<EngineTestTopend> {
+class PerFragmentStatsTest : public PlanTestingBaseClass<EngineTestTopend> {
 public:
-    PerBatchStatsTest() :
+    PerFragmentStatsTest() :
         PlanTestingBaseClass<EngineTestTopend>(),
         m_tableT(NULL),
         m_tableT_id(-1) {}
@@ -74,9 +74,9 @@ protected:
         ASSERT_EQ(0, strcmp(valueC, voltdb::ValuePeeker::peekObjectValue(tuple.getNValue(2))));
     }
 
-    void validatePerBatchStatsBuffer(int32_t expectedSucceededFragmentsCount, int32_t batchSize) {
-        voltdb::ReferenceSerializeInputBE perBatchStatsBuffer(m_per_batch_stats_buffer.get(), m_smallBufferSize);
-        int32_t actualSucceededFragmentsCount = perBatchStatsBuffer.readInt();
+    void validatePerFragmentStatsBuffer(int32_t expectedSucceededFragmentsCount, int32_t batchSize) {
+        voltdb::ReferenceSerializeInputBE perFragmentStatsBuffer(m_per_fragment_stats_buffer.get(), m_smallBufferSize);
+        int32_t actualSucceededFragmentsCount = perFragmentStatsBuffer.readInt();
         ASSERT_EQ(expectedSucceededFragmentsCount, actualSucceededFragmentsCount);
         int32_t numOfValuesToCheck = expectedSucceededFragmentsCount;
         // If the batch failed in the middle, the time measurement for the failed fragment also
@@ -85,7 +85,7 @@ protected:
             numOfValuesToCheck++;
         }
         for (int32_t i = 0; i < numOfValuesToCheck; i++) {
-            int64_t elapsedNanoseconds = perBatchStatsBuffer.readLong();
+            int64_t elapsedNanoseconds = perFragmentStatsBuffer.readLong();
             ASSERT_GT(elapsedNanoseconds, 0);
         }
     }
@@ -94,8 +94,8 @@ protected:
     int m_tableT_id;
 };
 
-TEST_F(PerBatchStatsTest, TestPerBatchStatsBuffer) {
-    // catalogPayload, anInsertPlan, and aSelectPlan are defined in PerBatchStatsTest.hpp
+TEST_F(PerFragmentStatsTest, TestPerFragmentStatsBuffer) {
+    // catalogPayload, anInsertPlan, and aSelectPlan are defined in PerFragmentStatsTest.hpp
     initialize(catalogPayload);
     // Add query plans.
     fragmentId_t insertPlanId = 100;
@@ -118,7 +118,7 @@ TEST_F(PerBatchStatsTest, TestPerBatchStatsBuffer) {
     addParameters(1, 4.0, "str%%");
     voltdb::ReferenceSerializeInputBE params(m_parameter_buffer.get(), m_smallBufferSize);
     // This batch should succeed and return 0.
-    m_engine->resetPerBatchStatisticsOutputBuffer();
+    m_engine->resetPerFragmentStatsOutputBuffer();
     ASSERT_EQ(0, m_engine->executePlanFragments(4, planfragmentIds, NULL, params, 1000, 1000, 1000, 1000, 1));
     // Fetch the results. We have forced them to be written
     // to our own buffer in the local engine.  But we don't
@@ -144,8 +144,8 @@ TEST_F(PerBatchStatsTest, TestPerBatchStatsBuffer) {
     ASSERT_TRUE(iter.next(tuple));
     validateRow(tuple, 1, 6.7, "string");
     ASSERT_FALSE(iter.next(tuple));
-    // Validate the content in the per batch statistics buffer.
-    validatePerBatchStatsBuffer(4, 4); // 4 out of 4 fragments succeeded.
+    // Validate the content in the per fragment statistics buffer.
+    validatePerFragmentStatsBuffer(4, 4); // 4 out of 4 fragments succeeded.
 
     // Now, let the third fragment fail the batch.
     // Fragment #1: INSERT INTO T VALUES (1, 8.9, 'string');
@@ -157,10 +157,10 @@ TEST_F(PerBatchStatsTest, TestPerBatchStatsBuffer) {
     // Fragment #4: SELECT * FROM T WHERE a = 1 and b >= 4.0 and C like 'str%';
     addParameters(1, 4.0, "str%%");
     // This batch should FAIL and return 1.
-    m_engine->resetPerBatchStatisticsOutputBuffer();
+    m_engine->resetPerFragmentStatsOutputBuffer();
     ASSERT_EQ(1, m_engine->executePlanFragments(4, planfragmentIds, NULL, params, 1001, 1001, 1001, 1001, 2));
     // Verify that 2 out of 4 fragments succeeded.
-    validatePerBatchStatsBuffer(2, 4);
+    validatePerFragmentStatsBuffer(2, 4);
     delete[] planfragmentIds;
 }
 
